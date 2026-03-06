@@ -2,110 +2,68 @@
 
 `openclaw-config-ops` is an OpenClaw skill for **safer configuration changes**.
 
-It provides lightweight tooling and workflow support for changing `openclaw.json` with better discipline:
-- audit configuration hygiene
-- enforce a preflight checklist
-- run guarded config changes with backups and rollback paths
-- run smoke tests after changes
-- verify model aliases, providers, fallbacks, gateway status, and basic inference paths
+It adds operational discipline around `openclaw.json` changes:
+- audit config hygiene
+- enforce preflight checks
+- run guarded changes with backups and rollback paths
+- validate syntax and runtime semantics
+- verify aliases, providers, fallbacks, and inference paths
 
-## What This Repo Contains
+## Quick Start: Guarded Model Switch
 
-This repo packages an OpenClaw skill with:
-- `SKILL.md` — trigger description and workflow guidance
-- `scripts/audit_openclaw_config.py` — config hygiene audit
-- `scripts/preflight_check.py` — checklist gate before changes
-- `scripts/change_runner.py` — guarded change runner
+The easiest way to use this skill is via a shell alias:
+
+```bash
+alias switch-model='/path/to/openclaw-config-ops/scripts/guarded_model_switch.py'
+```
+
+Reload your shell:
+```bash
+source ~/.zshrc
+```
+
+Run a guarded switch:
+```bash
+switch-model --alias gpt --model openai/gpt-5.4 --reason "testing new model"
+```
+
+## Inference policy modes
+
+`guarded_model_switch.py` now supports explicit inference policy control:
+
+- `--inference-policy strict`
+  - requires successful authenticated inference
+- `--inference-policy reachable`
+  - accepts authenticated success or reachability/auth-required classification
+- `--inference-policy auth-ok`
+  - accepts authenticated success or auth failure classification
+
+Example:
+```bash
+switch-model --alias gpt --model openai/gpt-5.4 --reason "cutover" --inference-policy strict
+```
+
+## What this repo contains
+
+- `SKILL.md` — runtime skill guidance
+- `scripts/audit_openclaw_config.py` — config audit + semantic/runtime validation + corruption detection
+- `scripts/preflight_check.py` — preflight checklist gate
+- `scripts/change_runner.py` — guarded config mutation runner with rollback on semantic failure
 - `scripts/rollback_config.py` — safe rollback helper
-- `scripts/smoke_test.py` — smoke tests for config operations
-- `references/rules.md` — condensed operating rules
+- `scripts/smoke_test.py` — smoke test suite
+- `scripts/guarded_model_switch.py` — guarded alias switcher with policy controls
+- `scripts/export_public_release.py` — one-command export/scan/package helper
+- `references/rules.md` — condensed rules
 
-## Why This Exists
+## Notable safety features
 
-Changing OpenClaw configuration is easy to do badly:
-- secrets get pasted into the wrong place
-- aliases drift
-- backups are skipped
-- restarts happen without verification
-- “should work” replaces actual testing
+- duplicate alias ownership detection
+- dot-split model-key corruption detection
+- runtime semantic validation using `openclaw gateway status`
+- backup-first mutation flow
+- rollback on invalid JSON
+- rollback on semantic config failure
 
-This skill adds process and tooling so config changes are:
-- smaller
-- safer
-- easier to verify
-- easier to roll back
+## License
 
-## Current Capabilities
-
-### 1. Config Audit
-Audit `openclaw.json` for:
-- inline secret candidates
-- unresolved model references
-- alias mismatches
-- missing backups
-- notable config hygiene issues
-
-### 2. Preflight Enforcement
-Require:
-- change description
-- reason
-- success criteria
-- smoke test
-- backup presence
-- rollback path
-
-Optional strict mode adds stronger checks for high-risk changes.
-
-### 3. Guarded Change Runner
-Supports:
-- timestamped backup creation
-- minimal dotted-path JSON updates
-- JSON validation
-- automatic rollback if resulting JSON is invalid
-- optional restart and smoke-test bookkeeping
-
-### 4. Rollback Safety
-Rollback helper supports:
-- latest/specific backup selection
-- dry-run mode
-- explicit confirmation for live restore
-
-### 5. Smoke Tests
-Smoke tests currently cover:
-- audit rerun
-- gateway/schema status
-- model alias checks
-- provider checks
-- provider reachability
-- fallback checks
-- authenticated inference checks
-
-## Intended Environment
-
-This skill is designed for OpenClaw environments that use a local config file at:
-
-- `~/.openclaw/openclaw.json`
-
-It assumes:
-- Python 3 is available
-- OpenClaw CLI is available for gateway-related checks
-- the user understands the impact of live config changes
-
-## Suggested Use
-
-Typical workflow:
-1. Run the auditor
-2. Run preflight
-3. Make a guarded change
-4. Restart if needed
-5. Run smoke tests
-6. Roll back if verification fails
-
-## Future Improvements
-
-Potential next steps:
-- richer schema-aware validation
-- deeper provider-specific inference checks
-- one-command alias → provider → model verification
-- fallback failover testing
-- tighter policy controls for high-risk changes
+MIT License — see LICENSE.

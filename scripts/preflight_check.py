@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
 CONFIG_PATH = Path.home() / '.openclaw' / 'openclaw.json'
-BACKUP_GLOB_PREFIX = 'openclaw.json.backup-'
 
 
 def parse_args():
@@ -21,6 +19,8 @@ def parse_args():
     p.add_argument('--secrets-involved', action='store_true', help='Flag if secrets/auth material are involved')
     p.add_argument('--allow-plaintext-secrets', action='store_true', help='Acknowledge plaintext secret risk explicitly')
     p.add_argument('--strict', action='store_true', help='Enable stricter policy checks for higher-risk changes')
+    p.add_argument('--require-model-exists', help='Require a specific model key to exist in agents.defaults.models')
+    p.add_argument('--require-alias', help='Inspect current ownership for a specific alias')
     p.add_argument('--json', action='store_true', help='Emit JSON only')
     return p.parse_args()
 
@@ -30,6 +30,30 @@ def latest_backup(target: Path):
     prefix = target.name + '.backup-'
     matches = sorted([p for p in parent.iterdir() if p.name.startswith(prefix)])
     return matches[-1] if matches else None
+
+
+def load_config():
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def get_models_map(data):
+    return data.get('agents', {}).get('defaults', {}).get('models', {})
+
+
+def collect_alias_owners(data, alias=None):
+    models = get_models_map(data)
+    owners = {}
+    for model_key, meta in models.items():
+        if not isinstance(meta, dict):
+            continue
+        model_alias = meta.get('alias')
+        if not model_alias:
+            continue
+        owners.setdefault(model_alias, []).append(model_key)
+    if alias is not None:
+        return owners.get(alias, [])
+    return owners
 
 
 def main():
@@ -43,7 +67,6 @@ def main():
         'ok': target.exists() or str(target) == str(CONFIG_PATH),
         'detail': str(target)
     })
-
     checks.append({
         'name': 'change_defined',
         'ok': bool(args.change.strip()),
@@ -71,12 +94,42 @@ def main():
         'ok': backup is not None,
         'detail': str(backup) if backup else None
     })
-
     checks.append({
         'name': 'rollback_known',
         'ok': bool((args.rollback or '').strip()) or backup is not None,
         'detail': args.rollback or (str(backup) if backup else None)
     })
+
+    if args.require_model_exists or args.require_alias:
+        try:
+            data = load_config()
+        except Exception as e:
+            checks.append({
+                'name': 'config_loadable_for_requirements',
+                'ok': False,
+                'detail': str(e)
+            })
+            data = None
+
+        if data is not None and args.require_model_exists:
+            models = get_models_map(data)
+            checks.append({
+                'name': 'required_model_exists',
+                'ok': args.require_model_exists in models,
+                'detail': args.require_model_exists
+            })
+
+        if data is not None and args.require_alias:
+            owners = collect_alias_owners(data, args.require_alias)
+            checks.append({
+                'name': 'required_alias_inspected',
+                'ok': True,
+                'detail': {
+                    'alias': args.require_alias,
+                    'owners': owners,
+                    'ownerCount': len(owners)
+                }
+            })
 
     if args.secrets_involved:
         checks.append({

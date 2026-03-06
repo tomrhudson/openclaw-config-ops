@@ -7,6 +7,24 @@ description: Safely inspect, audit, and change OpenClaw configuration and model/
 
 Use this skill for guarded operations around `~/.openclaw/openclaw.json` and related OpenClaw runtime config.
 
+## Quick Start: Guarded Model Switch
+
+The easiest way to use this skill is via the `switch-model` shell alias.
+
+### Setup
+
+Add to your shell profile:
+```bash
+alias switch-model='/path/to/openclaw-config-ops/scripts/guarded_model_switch.py'
+```
+
+### Usage
+```bash
+switch-model --alias gpt --model openai/gpt-5.4 --reason "testing new model"
+```
+
+This runs: preflight → alias update → smoke tests → confirmation.
+
 ## Workflow
 
 1. **Audit first**
@@ -35,6 +53,9 @@ Use this skill for guarded operations around `~/.openclaw/openclaw.json` and rel
 Audit `openclaw.json` against core SOP rules:
 - inline secret exposure candidates
 - alias coverage for configured models
+- duplicate alias ownership detection
+- invalid alias-entry detection
+- dot-split model-key corruption detection (e.g. `openai/gpt-5` with child keys `2`, `4`)
 - aliases pointing at undeclared models
 - default/fallback/image model references that do not resolve cleanly
 - config backups present for the primary config file
@@ -45,13 +66,15 @@ Gate config changes behind a minimal checklist:
 - change, reason, success condition, and smoke test defined
 - backup present
 - rollback known
+- optional target-model existence verification
+- optional alias ownership inspection
 - explicit acknowledgment when secrets/plaintext handling is involved
 - optional strict mode for high-risk changes
 
 ### scripts/change_runner.py
 Run a guarded config-change flow:
 - create timestamped backup
-- apply minimal dotted-path JSON sets
+- apply minimal dotted-path JSON sets (supports bracket notation for keys with `/` or `.`)
 - validate JSON after changes
 - roll back automatically if JSON becomes invalid
 - optionally restart OpenClaw
@@ -60,6 +83,8 @@ Run a guarded config-change flow:
 
 ### scripts/rollback_config.py
 Restore `openclaw.json` from a specific or latest backup.
+- supports `--list`
+- supports `--json`
 - supports `--dry-run`
 - requires `--yes` for live restore
 
@@ -67,14 +92,25 @@ Restore `openclaw.json` from a specific or latest backup.
 Run lightweight smoke tests for config changes:
 - audit rerun
 - gateway status check
+- runtime check (`runtime-check`; `schema-check` retained as deprecated alias)
+- alias uniqueness verification
 - model alias verification
 - provider presence/model-count verification
 - fallback reference verification
-- lightweight schema/gateway validation
 - provider reachability check via provider `/models` endpoint (treats 401/403 as reachable/auth-required)
 - authenticated inference check via provider `/chat/completions`
   - handles provider-specific token parameter differences
   - classifies auth failures separately from bad request payloads
+- handler-based dispatch for easier extension
+
+### scripts/guarded_model_switch.py
+End-to-end guarded model alias switcher.
+- Use via shell alias: `switch-model`
+- Enforces: preflight → direct config mutation → smoke test → confirm
+- Refuses unsafe mutation if an alias has multiple owners
+- Clears old alias owner(s) and assigns the new owner directly in config
+- Runs alias uniqueness, alias resolution, and inference smoke tests
+- Supports `--json` for machine-readable output
 
 ### references/rules.md
 Condensed rules and implementation targets derived from `SOP-Change-Control.md`.

@@ -36,9 +36,35 @@ def validate_json(path: Path):
         return False, str(e)
 
 
+def semantic_validate():
+    proc = run(['openclaw', 'gateway', 'status'], check=False)
+    stdout = proc.stdout or ''
+    stderr = proc.stderr or ''
+    invalid = 'Config invalid' in stdout or 'Config invalid' in stderr or 'Invalid config at' in stderr
+    return {
+        'ok': proc.returncode == 0 and not invalid,
+        'commandOk': proc.returncode == 0,
+        'configValid': not invalid,
+        'stdout': stdout.strip(),
+        'stderr': stderr.strip(),
+    }
+
+
+def parse_path(dotted_path: str):
+    import re
+    pattern = r'\["([^"]+)"\]|\[\'([^\']+)\'\]|([^.\[]+)'
+    matches = re.findall(pattern, dotted_path)
+    parts = []
+    for m in matches:
+        key = m[0] or m[1] or m[2]
+        if key:
+            parts.append(key)
+    return parts
+
+
 def apply_set(data, dotted_path, raw_value):
     value = json.loads(raw_value)
-    parts = dotted_path.split('.')
+    parts = parse_path(dotted_path)
     cur = data
     for part in parts[:-1]:
         if part not in cur or not isinstance(cur[part], dict):
@@ -66,8 +92,7 @@ def append_log(entry):
 
 
 def restart_openclaw(note):
-    cmd = ['openclaw', 'gateway', 'restart']
-    proc = run(cmd, check=False)
+    proc = run(['openclaw', 'gateway', 'restart'], check=False)
     return {
         'ok': proc.returncode == 0,
         'code': proc.returncode,
@@ -94,7 +119,7 @@ def main():
     p.add_argument('--reason', required=True)
     p.add_argument('--smoke-test', required=True, dest='smoke_test')
     p.add_argument('--restart', action='store_true')
-    p.add_argument('--smoke-kind', choices=['audit', 'gateway-restart-check'])
+    p.add_argument('--smoke-kind', choices=['audit', 'gateway-restart-check', 'runtime-check', 'schema-check'])
     p.add_argument('--dry-run', action='store_true')
     args = p.parse_args()
 
@@ -128,6 +153,14 @@ def main():
         print(json.dumps({'ok': False, 'error': 'resulting JSON invalid; rolled back', 'detail': after_err, 'backup': str(backup)}))
         return 4
 
+    semantic_result = None
+    if not args.dry_run:
+        semantic_result = semantic_validate()
+        if not semantic_result['ok']:
+            shutil.copy2(backup, target)
+            print(json.dumps({'ok': False, 'error': 'semantic config validation failed; rolled back', 'backup': str(backup), 'semantic': semantic_result}, indent=2))
+            return 5
+
     restart_result = None
     gateway_check = None
     smoke_result = None
@@ -155,6 +188,7 @@ def main():
         'reason': args.reason,
         'smokeTest': args.smoke_test,
         'applied': applied,
+        'semantic': semantic_result,
         'restart': restart_result,
         'gatewayCheck': gateway_check,
         'smokeResult': smoke_result,
@@ -167,6 +201,7 @@ def main():
         'target': str(target),
         'backup': str(backup),
         'applied': applied,
+        'semantic': semantic_result,
         'smokeTest': args.smoke_test,
         'restart': restart_result,
         'gatewayCheck': gateway_check,

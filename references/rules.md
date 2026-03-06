@@ -1,5 +1,7 @@
 # OpenClaw Config Ops Rules
 
+Derived from `SOP-Change-Control.md`.
+
 ## Core Rules
 - Back up `openclaw.json` before meaningful edits.
 - Prefer minimal, additive changes.
