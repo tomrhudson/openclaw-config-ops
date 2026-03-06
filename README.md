@@ -1,5 +1,7 @@
 # openclaw-config-ops
 
+[![Release](https://img.shields.io/github/v/release/tomrhudson/openclaw-config-ops)](https://github.com/tomrhudson/openclaw-config-ops/releases/tag/v1.0.0)
+
 `openclaw-config-ops` is an OpenClaw skill for **safe, repeatable configuration changes**.
 
 It turns fragile `openclaw.json` edits into a guarded workflow with:
